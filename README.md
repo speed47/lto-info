@@ -1,14 +1,14 @@
 LTO Info Tool
 =============
 
-This tool reads the internal memory of LTO/Ultrium cartridges from a tape drive
+This tool reads the internal memory of LTO/Ultrium cartridges from a tape drive 🖭
 
 More precisely, this tool can:
 - Read, decode and display factory and usage information stored in the Cartridge Memory (`CM`) aka Medium Auxiliary Memory (`MAM`)
 - View and modify the custom `User Medium Text Label` of a cartridge
 - Display basic information about the tape drive device
 
-## How to build and use
+## :hammer: How to build and use
 
 You need to have a go build environment [properly set up](https://golang.org/doc/install), then just type:
 
@@ -24,7 +24,7 @@ And try the tool by typing:
 
 By default, the tool will look for a tape device in `/dev/nst0`, or what is pointed to by the `TAPE` environment variable. To specify another device, use the `-d` option.
 
-## Output example
+## :mag: Output example
 ```
 Drive information:
    Vendor  : HP
@@ -61,14 +61,14 @@ Previous sessions:
   Session N-3: Used in a device of vendor FAKEVEND (serial MODEL34567)
 ```
 
-## Build-time dependencies
+## :gem: Build-time dependencies
 
 - https://github.com/HewlettPackard/structex: encode/decode bitfields in SCSI structs in a readable way
 - https://github.com/benmcclelland/mtio: go bindings for `mt` ioctls
 - https://github.com/benmcclelland/sgio: go bindings for `sgio` ioctls
 - https://github.com/jessevdk/go-flags: command-line options parser
 
-## Related
+## :hearts: Thanks
 
 Inspired from other tools written in C:
 - https://github.com/arogge/maminfo
