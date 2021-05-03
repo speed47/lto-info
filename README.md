@@ -37,7 +37,7 @@ Medium information:
   Assign. Org.  : LTO-CVE
   Manufacturer  : IMATION
   Serial No     : 0E00776390
-  Manuf. Date   : 2011-12-07 (roughly 9.5 years ago)
+  Manuf. Date   : 2011-12-07 (roughly 9.4 years ago)
   Tape length   : 609 meters
   Tape width    : 12.7 mm
   MAM Capacity  : 4096 bytes (1014 bytes remaining)
@@ -48,10 +48,10 @@ Format specs:
    Phy. specs: 4 bands/tape, 16 wraps/band, 8 tracks/wrap, 512 total tracks
    Duration  : 1h23 to fill tape with 64 end-to-end passes (78 seconds/pass)
 Usage information:
-  Partition space free  : 76% (153781/200448 MiB, 150/195 GiB, 0.15/0.19 TiB)
-  Cartridge load count  : 16
-  Data written - alltime:        64950 MiB (    63.43 GiB,   0.06 TiB, 0.32 FVE)
-  Data read    - alltime:         4244 MiB (     4.14 GiB,   0.00 TiB, 0.02 FVE)
+  Partition space free  : 96% (193746/200448 MiB, 189/195 GiB, 0.18/0.19 TiB)
+  Cartridge load count  : 13
+  Data written - alltime:        81983 MiB (    80.06 GiB,   0.08 TiB, 0.41 FVE)
+  Data read    - alltime:        20674 MiB (    20.19 GiB,   0.02 TiB, 0.10 FVE)
   Data written - session:            0 MiB (     0.00 GiB,   0.00 TiB, 0.00 FVE)
   Data read    - session:          139 MiB (     0.14 GiB,   0.00 TiB, 0.00 FVE)
 Previous sessions:
