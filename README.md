@@ -31,16 +31,16 @@ Drive information:
    Model   : Ultrium 2-SCSI
    Firmware: F63D
 Medium information:
-  Cartridge Type: 0x01 - Cleaning cartridge (50 cycles max)
+  Cartridge Type: 0x00 - Data cartridge
   Medium format : 0x42 - LTO-2
   Formatted as  : 0x42 - LTO-2
-  Assign. Org.  : LTO-FAKE
-  Manufacturer  : FAKMANUF
-  Serial No     : 123456789
-  Manuf. Date   : 2019-12-31 (roughly 1.3 years ago)
-  Tape length   : 999 meters
-  Tape width    : 11.1 mm
-  MAM Capacity  : 4096 bytes (850 bytes remaining)
+  Assign. Org.  : LTO-CVE
+  Manufacturer  : IMATION
+  Serial No     : 0E00776390
+  Manuf. Date   : 2011-12-07 (roughly 9.5 years ago)
+  Tape length   : 609 meters
+  Tape width    : 12.7 mm
+  MAM Capacity  : 4096 bytes (1014 bytes remaining)
 Format specs:
    Capacity  :   200 GB native   -   400 GB compressed with a 2:1 ratio
    R/W Speed :    40 MB/s native -    80 MB/s compressed
@@ -48,17 +48,17 @@ Format specs:
    Phy. specs: 4 bands/tape, 16 wraps/band, 8 tracks/wrap, 512 total tracks
    Duration  : 1h23 to fill tape with 64 end-to-end passes (78 seconds/pass)
 Usage information:
-  Partition space free  : 98% (198423/200448 MiB, 193/195 GiB, 0.19/0.19 TiB)
-  Cartridge load count  : 42
-  Data written - alltime:        17476 MiB (    17.07 GiB,   0.02 TiB, 0.09 FVE)
-  Data read    - alltime:        15827 MiB (    15.46 GiB,   0.02 TiB, 0.08 FVE)
+  Partition space free  : 76% (153781/200448 MiB, 150/195 GiB, 0.15/0.19 TiB)
+  Cartridge load count  : 16
+  Data written - alltime:        64950 MiB (    63.43 GiB,   0.06 TiB, 0.32 FVE)
+  Data read    - alltime:         4244 MiB (     4.14 GiB,   0.00 TiB, 0.02 FVE)
   Data written - session:            0 MiB (     0.00 GiB,   0.00 TiB, 0.00 FVE)
   Data read    - session:          139 MiB (     0.14 GiB,   0.00 TiB, 0.00 FVE)
 Previous sessions:
-  Session N-0: Used in a device of vendor FAKEVEND (serial MODEL012345678901234567890123456)
-  Session N-1: Used in a device of vendor FAKEVEND (serial MODEL12345)
-  Session N-2: Used in device ACMEINC
-  Session N-3: Used in a device of vendor FAKEVEND (serial MODEL34567)
+  Session N-0: Used in a device of vendor HP (serial HU10625W0T)
+  Session N-1: Used in a device of vendor HP (serial HU10625W0T)
+  Session N-2: Used in a device of vendor HP (serial HUP9B067QF)
+  Session N-3: Used in a device of vendor HP (serial HUP9B067QF)
 ```
 
 ## :gem: Build-time dependencies
