@@ -12,6 +12,8 @@ import (
 	"github.com/benmcclelland/sgio"
 	"os"
 	"strings"
+	"syscall"
+	"unsafe"
 )
 
 /*
@@ -48,6 +50,28 @@ func (drive TapeDrive) IsFake() bool {
 	return drive.DeviceName == "FAKE"
 }
 
+// copy of sg.OpenScsiDevice() but with RDONLY instead of O_RDWR
+func OpenScsiDeviceRO(fname string) (*os.File, error) {
+	f, err := os.OpenFile(fname, os.O_RDONLY, 0)
+	if err != nil {
+		return nil, err
+	}
+	var version uint32
+	_, _, errno := syscall.Syscall(
+		syscall.SYS_IOCTL,
+		uintptr(f.Fd()),
+		uintptr(sgio.SG_GET_VERSION_NUM),
+		uintptr(unsafe.Pointer(&version)),
+	)
+	if errno != 0 {
+		return nil, fmt.Errorf("failed to get version info from sg device (errno=%d)", errno)
+	}
+	if version < 30000 {
+		return nil, fmt.Errorf("device does not appear to be an sg device")
+	}
+	return f, nil
+}
+
 func TapeDriveNew(devicename string) (*TapeDrive, error) {
 	if devicename == "" {
 		if os.Getenv("TAPE") != "" {
@@ -64,7 +88,7 @@ func TapeDriveNew(devicename string) (*TapeDrive, error) {
 	}
 
 	fmt.Printf("Opening device %s\n", devicename)
-	dev, err := sgio.OpenScsiDevice(devicename)
+	dev, err := OpenScsiDeviceRO(devicename)
 	if err != nil {
 		fmt.Println("Failed to open:", err)
 		return nil, err

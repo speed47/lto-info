@@ -264,7 +264,7 @@ func (cm *Cm) String() string {
 			if serial != "" {
 				s += fmt.Sprintf("  Session N-%d: Used in a device of vendor %s (serial %s)\n", i, devname, serial)
 			} else {
-				s += fmt.Sprintf("  Session N-%d: Used in device %s\n", i, devname)
+				s += fmt.Sprintf("  Session N-%d: Used in a device of vendor %s\n", i, devname)
 			}
 		}
 	}
