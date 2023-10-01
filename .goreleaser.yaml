@@ -1,9 +1,11 @@
+builds:
+  -
+    goos:
+      - linux
+      - darwin
+      - freebsd
+
 release:
   draft: true
   replace_existing_draft: true
   make_latest: false
-builds:
-  goos:
-    - linux
-    - darwin
-    - freebsd
