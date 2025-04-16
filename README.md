@@ -24,41 +24,40 @@ And try the tool by typing:
 
 By default, the tool will look for a tape device in `/dev/nst0`, or what is pointed to by the `TAPE` environment variable. To specify another device, use the `-d` option.
 
-## :mag: Output example
+## :mag: Partial output example
 ```
 Drive information:
-   Vendor  : HP
-   Model   : Ultrium 2-SCSI
-   Firmware: F63D
+   Vendor  : TANDBERG
+   Model   : LTO-6 HH
+   Firmware: 3579
 Medium information:
   Cartridge Type: 0x00 - Data cartridge
-  Medium format : 0x42 - LTO-2
-  Formatted as  : 0x42 - LTO-2
+  Medium format : 0x5a - LTO-6
+  Formatted as  : 0x5a - LTO-6
   Assign. Org.  : LTO-CVE
-  Manufacturer  : IMATION
-  Serial No     : 0E00776390
-  Manuf. Date   : 2011-12-07 (roughly 9.4 years ago)
-  Tape length   : 609 meters
+  Manufacturer  : HPE
+  Serial No     : F26VYYRDEP
+  Barcode No    : FJK676L6
+  Manuf. Date   : 2022-07-25 (roughly 2.7 years ago)
+  Tape length   : 846 meters
   Tape width    : 12.7 mm
-  MAM Capacity  : 4096 bytes (1014 bytes remaining)
+  MAM Capacity  : 16384 bytes
 Format specs:
-   Capacity  :   200 GB native   -   400 GB compressed with a 2:1 ratio
-   R/W Speed :    40 MB/s native -    80 MB/s compressed
-   Partitions:     1 max partitions supported
-   Phy. specs: 4 bands/tape, 16 wraps/band, 8 tracks/wrap, 512 total tracks
-   Duration  : 1h23 to fill tape with 64 end-to-end passes (78 seconds/pass)
+   Capacity  :  2500 GB native   -  6250 GB compressed with a 2.5:1 ratio
+   R/W Speed :   160 MB/s native -   400 MB/s compressed
+   Partitions:     4 max partitions supported
+   Phy. specs: 4 bands/tape, 34 wraps/band, 16 tracks/wrap, 2176 total tracks
+   Duration  : 4h20 to fill tape with 136 end-to-end passes (115 seconds/pass)
 Usage information:
-  Partition space free  : 96% (193746/200448 MiB, 189/195 GiB, 0.18/0.19 TiB)
-  Cartridge load count  : 13
-  Data written - alltime:        81983 MiB (    80.06 GiB,   0.08 TiB, 0.41 FVE)
-  Data read    - alltime:        20674 MiB (    20.19 GiB,   0.02 TiB, 0.10 FVE)
-  Data written - session:            0 MiB (     0.00 GiB,   0.00 TiB, 0.00 FVE)
-  Data read    - session:          139 MiB (     0.14 GiB,   0.00 TiB, 0.00 FVE)
+  Data written - alltime:            0 MiB (     0.00 GiB,   0.00 TiB)
+  Data read    - alltime:            0 MiB (     0.00 GiB,   0.00 TiB)
+  Data written - session:            0 MiB (     0.00 GiB,   0.00 TiB)
+  Data read    - session:            0 MiB (     0.00 GiB,   0.00 TiB)
 Previous sessions:
-  Session N-0: Used in a device of vendor HP (serial HU10625W0T)
-  Session N-1: Used in a device of vendor HP (serial HU10625W0T)
-  Session N-2: Used in a device of vendor HP (serial HUP9B067QF)
-  Session N-3: Used in a device of vendor HP (serial HUP9B067QF)
+  Session N-0: Used in a device of vendor HP (serial XXXXXXXXXX)
+  Session N-1: Used in a device of vendor HP
+  Session N-2: Used in a device of vendor HP
+  Session N-3: Used in a device of vendor HP
 ```
 
 ## :gem: Build-time dependencies
