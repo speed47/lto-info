@@ -203,10 +203,10 @@ func (drive *TapeDrive) GetAttribute(attr *CmAttr) error {
 	  byte14: reserved                | CACHE
 	  byte15: CONTROL BYTE (00h)
 	*/
-	inqCmdBlk := []uint8{0x8C, 0, 0, 0, 0, 0, 0, 0, 0x04, 0x00, 0, 0, 159, 0, 0, 0}
+	inqCmdBlk := []uint8{0x8C, 0, 0, 0, 0, 0, 0, 0, 0x04, 0x00, 0, 0, 0, 0, 0, 0}
 	inqCmdBlk[8] = uint8(0xff & (attr.Command >> 8))
 	inqCmdBlk[9] = uint8(0xff & attr.Command)
-	inqCmdBlk[12] = uint8(0xff & attr.Len)
+	inqCmdBlk[13] = uint8(9 + attr.Len)
 
 	ioHdr := &sgio.SgIoHdr{
 		InterfaceID:    int32('S'),
