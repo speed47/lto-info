@@ -16,6 +16,7 @@ type OptionsStruct struct {
 	Mock   bool   `long:"mock" description:"Use a mocked tape drive (for tests only)"`
 	Debug  bool   `short:"d" long:"debug" description:"Print debug information"`
 	Dump   string `long:"dump" value-name:"FILE" description:"Dump SCSI raw data to a file"`
+	IBM    bool   `long:"ibm" description:"Read IBM-specific LP 3Ch (Drive Usage) log page"`
 
 	Man bool `hidden:"1" long:"man"`
 }
@@ -114,4 +115,32 @@ waitfor:
 
 	//drive.CmList.Print()
 	fmt.Println(drive)
+
+	fmt.Printf("TapeAlert flags (cleared by this read):\n")
+	alerts, err := drive.GetTapeAlert()
+	if err != nil {
+		fmt.Printf("  error reading: %v\n", err)
+	} else if len(alerts) == 0 {
+		fmt.Printf("  none\n")
+	} else {
+		for _, a := range alerts {
+			fmt.Printf("  [%-13s] %s\n", a.Type, a.Name)
+		}
+	}
+
+	if options.IBM {
+		du, err := drive.GetDriveUsageLp3c()
+		if err != nil {
+			fmt.Printf("Drive usage information (LP 3Ch): error reading: %v\n", err)
+		} else {
+			fmt.Print(du)
+		}
+
+		tu, err := drive.GetTapeUsageLp30()
+		if err != nil {
+			fmt.Printf("Tape usage information (LP 30h): error reading: %v\n", err)
+		} else {
+			fmt.Print(tu)
+		}
+	}
 }

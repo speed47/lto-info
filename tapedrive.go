@@ -480,6 +480,430 @@ func (drive *TapeDrive) scsiLogSense(ls *LogSenseType) error {
 	return nil
 }
 
+// TapeAlertEntry holds a single active TapeAlert flag.
+type TapeAlertEntry struct {
+	Code uint16
+	Name string
+	Type string // "Critical", "Warning", "Informational"
+}
+
+// tapeAlertTable maps parameter codes to flag names and severity types.
+// Source: IBM LTO SCSI Reference GA32-0928-01, Table 246.
+var tapeAlertTable = map[uint16]TapeAlertEntry{
+	0x0001: {0x0001, "Read Warning", "Warning"},
+	0x0002: {0x0002, "Write Warning", "Warning"},
+	0x0003: {0x0003, "Hard Error", "Warning"},
+	0x0004: {0x0004, "Media", "Critical"},
+	0x0005: {0x0005, "Read Failure", "Critical"},
+	0x0006: {0x0006, "Write Failure", "Critical"},
+	0x0007: {0x0007, "Media Life", "Warning"},
+	0x0008: {0x0008, "Not Data Grade", "Warning"},
+	0x0009: {0x0009, "Write Protect", "Critical"},
+	0x000A: {0x000A, "No Removal", "Informational"},
+	0x000B: {0x000B, "Cleaning Media", "Informational"},
+	0x000C: {0x000C, "Unsupported Format", "Informational"},
+	0x000E: {0x000E, "Unrecoverable Snapped Tape", "Critical"},
+	0x000F: {0x000F, "Memory Chip in Cartridge Failure", "Warning"},
+	0x0010: {0x0010, "Forced Eject", "Critical"},
+	0x0032: {0x0032, "Lost Statistics", "Warning"},
+	0x0033: {0x0033, "Tape Directory Invalid at Unload", "Warning"},
+	0x0034: {0x0034, "Tape System Area Write Failure", "Critical"},
+	0x0035: {0x0035, "Tape System Area Read Failure", "Critical"},
+	0x0036: {0x0036, "No Start of Data", "Critical"},
+	0x0037: {0x0037, "Loading Failure", "Critical"},
+	0x0038: {0x0038, "Unrecoverable Unload Failure", "Critical"},
+	0x0039: {0x0039, "Automation Interface Failure", "Critical"},
+	0x003A: {0x003A, "Firmware Failure", "Warning"},
+}
+
+// GetTapeAlert reads LP 2Eh (TapeAlert) and returns the list of active alerts.
+// Note: reading this page clears all flags on the drive.
+func (drive *TapeDrive) GetTapeAlert() ([]TapeAlertEntry, error) {
+	if drive.IsFake() {
+		return nil, nil
+	}
+
+	// Full page is always 4-byte header + 64 parameters × 5 bytes each.
+	const replyLen = 4 + 64*5
+
+	senseBuf := make([]byte, sgio.SENSE_BUF_LEN)
+	replyBuf := make([]byte, replyLen)
+
+	inqCmdBlk := []uint8{
+		0x4D,                   // LOG SENSE
+		0x00,                   // PPC=0, SP=0
+		(0b01 << 6) | 0x2E,     // PC=current values, PAGE CODE=2Eh
+		0x00,                   // SUBPAGE CODE
+		0x00,                   // reserved
+		0x00,                   // PARAMETER POINTER MSB
+		0x00,                   // PARAMETER POINTER LSB
+		uint8(replyLen >> 8),   // ALLOCATION LENGTH MSB
+		uint8(replyLen & 0xFF), // ALLOCATION LENGTH LSB
+		0x00,                   // CONTROL
+	}
+
+	ioHdr := &sgio.SgIoHdr{
+		InterfaceID:    int32('S'),
+		CmdLen:         uint8(len(inqCmdBlk)),
+		MxSbLen:        sgio.SENSE_BUF_LEN,
+		DxferDirection: sgio.SG_DXFER_FROM_DEV,
+		DxferLen:       replyLen,
+		Dxferp:         &replyBuf[0],
+		Cmdp:           &inqCmdBlk[0],
+		Sbp:            &senseBuf[0],
+		Timeout:        sgio.TIMEOUT_20_SECS,
+	}
+
+	if err := sgio.SgioSyscall(drive.Dev, ioHdr); err != nil {
+		return nil, err
+	}
+	if err := sgio.CheckSense(ioHdr, &senseBuf); err != nil {
+		return nil, err
+	}
+
+	// Parse log parameters. Each is: 2-byte code, 1-byte control, 1-byte length, n-byte value.
+	pageLen := (int(replyBuf[2]) << 8) | int(replyBuf[3])
+	var active []TapeAlertEntry
+	offset := 4
+	for offset+3 < 4+pageLen {
+		code := (uint16(replyBuf[offset]) << 8) | uint16(replyBuf[offset+1])
+		paramLen := int(replyBuf[offset+3])
+		if paramLen >= 1 && replyBuf[offset+4] == 0x01 {
+			if entry, ok := tapeAlertTable[code]; ok {
+				active = append(active, entry)
+			} else {
+				active = append(active, TapeAlertEntry{code, fmt.Sprintf("Unknown flag 0x%04x", code), "Unknown"})
+			}
+		}
+		offset += 4 + paramLen
+	}
+
+	return active, nil
+}
+
+// DriveUsageLp3c holds drive lifetime statistics from LOG SENSE page 3Ch.
+// IBM vendor-specific; only valid when Product ID is "HH LTO Gen x".
+// Counters saturate at max (do not wrap). Updated on error events and unload.
+type DriveUsageLp3c struct {
+	WriteMediaBlocks      *uint64
+	RewriteMediaBlocks    *uint64
+	ReadMediaBlocks       *uint64
+	ECCCorrections        *uint64
+	RereadMediaBlocks     *uint64
+	CartridgeLoads        *uint64
+	TimeSinceLastCleaning *uint64 // minutes
+	PowerOnTime           *uint64 // minutes
+	TimeTapeLoaded        *uint64 // minutes
+	CleaningCounter       *uint64
+	WornMedia             *uint64 // 0=no, nonzero=yes (= TapeAlert 07h)
+	DeadMedia             *uint64 // 0=no, nonzero=yes (= TapeAlert 04h)
+}
+
+func lp3cU64(v uint64) *uint64 { n := v; return &n }
+
+// GetDriveUsageLp3c reads LOG SENSE page 3Ch and returns drive lifetime stats.
+func (drive *TapeDrive) GetDriveUsageLp3c() (*DriveUsageLp3c, error) {
+	if drive.IsFake() {
+		return &DriveUsageLp3c{
+			WriteMediaBlocks:      lp3cU64(1234567),
+			RewriteMediaBlocks:    lp3cU64(89),
+			ReadMediaBlocks:       lp3cU64(999888),
+			ECCCorrections:        lp3cU64(42),
+			RereadMediaBlocks:     lp3cU64(5),
+			CartridgeLoads:        lp3cU64(42),
+			TimeSinceLastCleaning: lp3cU64(1440),
+			PowerOnTime:           lp3cU64(52560),
+			TimeTapeLoaded:        lp3cU64(3120),
+			CleaningCounter:       lp3cU64(2),
+			WornMedia:             lp3cU64(0),
+			DeadMedia:             lp3cU64(0),
+		}, nil
+	}
+
+	const replyLen = 512
+	senseBuf := make([]byte, sgio.SENSE_BUF_LEN)
+	replyBuf := make([]byte, replyLen)
+
+	inqCmdBlk := []uint8{
+		0x4D,                   // LOG SENSE
+		0x00,                   // PPC=0, SP=0
+		(0b01 << 6) | 0x3C,     // PC=current values, PAGE CODE=3Ch
+		0x00,                   // SUBPAGE CODE
+		0x00,                   // reserved
+		0x00,                   // PARAMETER POINTER MSB
+		0x00,                   // PARAMETER POINTER LSB
+		uint8(replyLen >> 8),   // ALLOCATION LENGTH MSB
+		uint8(replyLen & 0xFF), // ALLOCATION LENGTH LSB
+		0x00,                   // CONTROL
+	}
+
+	ioHdr := &sgio.SgIoHdr{
+		InterfaceID:    int32('S'),
+		CmdLen:         uint8(len(inqCmdBlk)),
+		MxSbLen:        sgio.SENSE_BUF_LEN,
+		DxferDirection: sgio.SG_DXFER_FROM_DEV,
+		DxferLen:       replyLen,
+		Dxferp:         &replyBuf[0],
+		Cmdp:           &inqCmdBlk[0],
+		Sbp:            &senseBuf[0],
+		Timeout:        sgio.TIMEOUT_20_SECS,
+	}
+
+	if err := sgio.SgioSyscall(drive.Dev, ioHdr); err != nil {
+		return nil, err
+	}
+	if err := sgio.CheckSense(ioHdr, &senseBuf); err != nil {
+		return nil, err
+	}
+
+	pageLen := (int(replyBuf[2]) << 8) | int(replyBuf[3])
+	result := &DriveUsageLp3c{}
+	offset := 4
+	for offset+3 < 4+pageLen {
+		code := (uint16(replyBuf[offset]) << 8) | uint16(replyBuf[offset+1])
+		paramLen := int(replyBuf[offset+3])
+		if offset+4+paramLen > len(replyBuf) {
+			break
+		}
+		var val uint64
+		for i := 0; i < paramLen; i++ {
+			val = (val << 8) | uint64(replyBuf[offset+4+i])
+		}
+		v := val
+		switch code {
+		case 0x0001:
+			result.WriteMediaBlocks = &v
+		case 0x0002:
+			result.RewriteMediaBlocks = &v
+		case 0x0003:
+			result.ReadMediaBlocks = &v
+		case 0x0004:
+			result.ECCCorrections = &v
+		case 0x0005:
+			result.RereadMediaBlocks = &v
+		case 0x0006:
+			result.CartridgeLoads = &v
+		case 0x0007:
+			result.TimeSinceLastCleaning = &v
+		case 0x0008:
+			result.PowerOnTime = &v
+		case 0x0009:
+			result.TimeTapeLoaded = &v
+		case 0x000A:
+			result.CleaningCounter = &v
+		case 0x000B:
+			result.WornMedia = &v
+		case 0x000C:
+			result.DeadMedia = &v
+		}
+		offset += 4 + paramLen
+	}
+	return result, nil
+}
+
+func (du *DriveUsageLp3c) String() string {
+	s := "Drive usage information (LP 3Ch, IBM-specific):\n"
+	if du.WriteMediaBlocks != nil {
+		s += fmt.Sprintf("  Datasets written          : %d\n", *du.WriteMediaBlocks)
+	}
+	if du.RewriteMediaBlocks != nil {
+		s += fmt.Sprintf("  Datasets rewritten        : %d\n", *du.RewriteMediaBlocks)
+	}
+	if du.ReadMediaBlocks != nil {
+		s += fmt.Sprintf("  Datasets read             : %d\n", *du.ReadMediaBlocks)
+	}
+	if du.ECCCorrections != nil {
+		s += fmt.Sprintf("  ECC corrections (on read) : %d\n", *du.ECCCorrections)
+	}
+	if du.RereadMediaBlocks != nil {
+		s += fmt.Sprintf("  Datasets reread           : %d\n", *du.RereadMediaBlocks)
+	}
+	if du.CartridgeLoads != nil {
+		s += fmt.Sprintf("  Cumulative cartridge loads: %d\n", *du.CartridgeLoads)
+	}
+	if du.CleaningCounter != nil {
+		s += fmt.Sprintf("  Cumulative cleaning ops   : %d\n", *du.CleaningCounter)
+	}
+	if du.TimeSinceLastCleaning != nil {
+		m := int(*du.TimeSinceLastCleaning)
+		s += fmt.Sprintf("  Time since last cleaning  : %s\n", min2human(m))
+	}
+	if du.PowerOnTime != nil {
+		m := int(*du.PowerOnTime)
+		s += fmt.Sprintf("  Cumulative power-on time  : %s\n", min2human(m))
+	}
+	if du.TimeTapeLoaded != nil {
+		m := int(*du.TimeTapeLoaded)
+		s += fmt.Sprintf("  Time tape loaded/tensioned: %s\n", min2human(m))
+	}
+	if du.WornMedia != nil {
+		flag := "no"
+		if *du.WornMedia != 0 {
+			flag = "YES"
+		}
+		s += fmt.Sprintf("  WORN MEDIA flag           : %s\n", flag)
+	}
+	if du.DeadMedia != nil {
+		flag := "no"
+		if *du.DeadMedia != 0 {
+			flag = "YES"
+		}
+		s += fmt.Sprintf("  DEAD MEDIA flag           : %s\n", flag)
+	}
+	return s
+}
+
+// TapeUsageLp30 holds per-volume counters from LOG SENSE page 30h.
+// IBM vendor-specific predecessor to LP 17h; deprecated on LTO-5+ but still returned.
+type TapeUsageLp30 struct {
+	ThreadCount            *uint64
+	DataSetsWritten        *uint64
+	WriteRetries           *uint64
+	UnrecoveredWriteErrors *uint64
+	SuspendedWrites        *uint64
+	FatalSuspendedWrites   *uint64
+	DataSetsRead           *uint64
+	ReadRetries            *uint64
+	UnrecoveredReadErrors  *uint64
+	SuspendedReads         *uint64
+	FatalSuspendedReads    *uint64
+}
+
+// GetTapeUsageLp30 reads LOG SENSE page 30h and returns per-volume tape usage counters.
+func (drive *TapeDrive) GetTapeUsageLp30() (*TapeUsageLp30, error) {
+	if drive.IsFake() {
+		return &TapeUsageLp30{
+			ThreadCount:            lp3cU64(42),
+			DataSetsWritten:        lp3cU64(1234567),
+			WriteRetries:           lp3cU64(7),
+			UnrecoveredWriteErrors: lp3cU64(0),
+			SuspendedWrites:        lp3cU64(1),
+			FatalSuspendedWrites:   lp3cU64(0),
+			DataSetsRead:           lp3cU64(999888),
+			ReadRetries:            lp3cU64(12),
+			UnrecoveredReadErrors:  lp3cU64(0),
+			SuspendedReads:         lp3cU64(0),
+			FatalSuspendedReads:    lp3cU64(0),
+		}, nil
+	}
+
+	const replyLen = 512
+	senseBuf := make([]byte, sgio.SENSE_BUF_LEN)
+	replyBuf := make([]byte, replyLen)
+
+	inqCmdBlk := []uint8{
+		0x4D,                   // LOG SENSE
+		0x00,                   // PPC=0, SP=0
+		(0b01 << 6) | 0x30,     // PC=current values, PAGE CODE=30h
+		0x00,                   // SUBPAGE CODE
+		0x00,                   // reserved
+		0x00,                   // PARAMETER POINTER MSB
+		0x00,                   // PARAMETER POINTER LSB
+		uint8(replyLen >> 8),   // ALLOCATION LENGTH MSB
+		uint8(replyLen & 0xFF), // ALLOCATION LENGTH LSB
+		0x00,                   // CONTROL
+	}
+
+	ioHdr := &sgio.SgIoHdr{
+		InterfaceID:    int32('S'),
+		CmdLen:         uint8(len(inqCmdBlk)),
+		MxSbLen:        sgio.SENSE_BUF_LEN,
+		DxferDirection: sgio.SG_DXFER_FROM_DEV,
+		DxferLen:       replyLen,
+		Dxferp:         &replyBuf[0],
+		Cmdp:           &inqCmdBlk[0],
+		Sbp:            &senseBuf[0],
+		Timeout:        sgio.TIMEOUT_20_SECS,
+	}
+
+	if err := sgio.SgioSyscall(drive.Dev, ioHdr); err != nil {
+		return nil, err
+	}
+	if err := sgio.CheckSense(ioHdr, &senseBuf); err != nil {
+		return nil, err
+	}
+
+	pageLen := (int(replyBuf[2]) << 8) | int(replyBuf[3])
+	result := &TapeUsageLp30{}
+	offset := 4
+	for offset+3 < 4+pageLen {
+		code := (uint16(replyBuf[offset]) << 8) | uint16(replyBuf[offset+1])
+		paramLen := int(replyBuf[offset+3])
+		if offset+4+paramLen > len(replyBuf) {
+			break
+		}
+		var val uint64
+		for i := 0; i < paramLen; i++ {
+			val = (val << 8) | uint64(replyBuf[offset+4+i])
+		}
+		v := val
+		switch code {
+		case 0x0001:
+			result.ThreadCount = &v
+		case 0x0002:
+			result.DataSetsWritten = &v
+		case 0x0003:
+			result.WriteRetries = &v
+		case 0x0004:
+			result.UnrecoveredWriteErrors = &v
+		case 0x0005:
+			result.SuspendedWrites = &v
+		case 0x0006:
+			result.FatalSuspendedWrites = &v
+		case 0x0007:
+			result.DataSetsRead = &v
+		case 0x0008:
+			result.ReadRetries = &v
+		case 0x0009:
+			result.UnrecoveredReadErrors = &v
+		case 0x000A:
+			result.SuspendedReads = &v
+		case 0x000B:
+			result.FatalSuspendedReads = &v
+		}
+		offset += 4 + paramLen
+	}
+	return result, nil
+}
+
+func (tu *TapeUsageLp30) String() string {
+	s := "Tape usage information (LP 30h, IBM legacy):\n"
+	if tu.ThreadCount != nil {
+		s += fmt.Sprintf("  Volume mounts              : %d\n", *tu.ThreadCount)
+	}
+	if tu.DataSetsWritten != nil {
+		s += fmt.Sprintf("  Datasets written           : %d\n", *tu.DataSetsWritten)
+	}
+	if tu.WriteRetries != nil {
+		s += fmt.Sprintf("  Write retries (temps)      : %d\n", *tu.WriteRetries)
+	}
+	if tu.UnrecoveredWriteErrors != nil {
+		s += fmt.Sprintf("  Unrecovered write errors   : %d\n", *tu.UnrecoveredWriteErrors)
+	}
+	if tu.SuspendedWrites != nil {
+		s += fmt.Sprintf("  Suspended writes           : %d\n", *tu.SuspendedWrites)
+	}
+	if tu.FatalSuspendedWrites != nil {
+		s += fmt.Sprintf("  Fatal suspended writes     : %d\n", *tu.FatalSuspendedWrites)
+	}
+	if tu.DataSetsRead != nil {
+		s += fmt.Sprintf("  Datasets read              : %d\n", *tu.DataSetsRead)
+	}
+	if tu.ReadRetries != nil {
+		s += fmt.Sprintf("  Read retries (temps)       : %d\n", *tu.ReadRetries)
+	}
+	if tu.UnrecoveredReadErrors != nil {
+		s += fmt.Sprintf("  Unrecovered read errors    : %d\n", *tu.UnrecoveredReadErrors)
+	}
+	if tu.SuspendedReads != nil {
+		s += fmt.Sprintf("  Suspended reads            : %d\n", *tu.SuspendedReads)
+	}
+	if tu.FatalSuspendedReads != nil {
+		s += fmt.Sprintf("  Fatal suspended reads      : %d\n", *tu.FatalSuspendedReads)
+	}
+	return s
+}
+
 func (drive *TapeDrive) String() string {
 	s := fmt.Sprintf("Drive information:\n")
 	s += fmt.Sprintf("   Vendor  : %s\n", drive.InquiryInfo.Vendor)
